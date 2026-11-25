@@ -184,6 +184,9 @@ class MainActivity : Activity() {
         val root = FrameLayout(this)
         root.setBackgroundColor(Color.BLACK)
         root.setPadding(pad, pad, pad, pad)
+        // The animation's canvas reaches past the text margins, so let it draw there.
+        root.clipToPadding = false
+        root.clipChildren = false
 
         timeView = label("")
         dateView = label("")
@@ -218,8 +221,14 @@ class MainActivity : Activity() {
         appsPanel.addView(item("back", TAG_BACK) { showHome() }, backParams)
         root.addView(appsPanel, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.START))
 
+        // The video's canvas is larger than the pendant inside it, to leave room for the
+        // light flares. It overhangs the margins so the pendant's lowest point lands on
+        // the baseline of the app row and its black border falls outside the layout.
         loopSlot = FrameLayout(this)
-        root.addView(loopSlot, FrameLayout.LayoutParams(dp(LOOP_SIZE), dp(LOOP_SIZE), Gravity.BOTTOM or Gravity.END))
+        val loopParams = FrameLayout.LayoutParams(px(LOOP_SIZE), px(LOOP_SIZE), Gravity.BOTTOM or Gravity.END)
+        loopParams.marginEnd = -px(LOOP_OVERHANG_END)
+        loopParams.bottomMargin = -px(LOOP_OVERHANG_BOTTOM)
+        root.addView(loopSlot, loopParams)
 
         setContentView(root)
     }
@@ -587,13 +596,17 @@ class MainActivity : Activity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
 
+    private fun px(valueDp: Float): Int = (valueDp * resources.displayMetrics.density).roundToInt()
+
     private companion object {
         const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
         const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         const val GREY = 0xFF7A7A7A.toInt()
         const val TEXT_SIZE = 16f
         const val ITEM_GAP = 28
-        const val LOOP_SIZE = 222
+        const val LOOP_SIZE = 289f
+        const val LOOP_OVERHANG_END = 33.5f
+        const val LOOP_OVERHANG_BOTTOM = 51f
         const val LOOP_VIDEO = "home.mp4"
         const val MAX_VIDEO_RETRIES = 3
         const val ROWS = 7

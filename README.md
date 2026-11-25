@@ -30,7 +30,7 @@ repo's Releases page as `dg-tv.apk`. Each build installs over the previous one.
 
 | What | Where |
 | --- | --- |
-| The animation | Replace `app/src/main/assets/home.mp4` (640 x 640, black background, no sound needed). A GIF or animated WebP also works: remove the MP4 and add `home.gif` or `home.webp`. |
+| The animation | Replace `app/src/main/assets/home.mp4` (832 x 832 canvas with the pendant centered and room around it for the flares, black background, no sound needed). A GIF or animated WebP also works: remove the MP4 and add `home.gif` or `home.webp`. |
 | Weather location | `WEATHER_URL` near the bottom of `MainActivity.kt` (latitude and longitude). |
 | Default pinned apps | `DEFAULT_PINNED` in `MainActivity.kt`. |
 | Text size, spacing, animation size | The constants at the bottom of `MainActivity.kt`. Values are the mockup's pixels divided by two. |
