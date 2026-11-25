@@ -10,9 +10,11 @@ import android.graphics.ColorFilter
 import android.graphics.ImageDecoder
 import android.graphics.Paint
 import android.graphics.PixelFormat
+import android.graphics.SurfaceTexture
 import android.graphics.Typeface
 import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.drawable.Drawable
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -22,6 +24,8 @@ import android.text.format.DateFormat
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.Surface
+import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -41,7 +45,7 @@ import kotlin.math.roundToInt
  * The whole launcher: one screen with two states.
  *
  * Home:      time, date and weather along the top; pinned apps, "apps" and "x" along
- *            the bottom left; the GIF in the bottom right.
+ *            the bottom left; the looping animation in the bottom right.
  * All apps:  the same frame, with every installed app in alphabetical columns and "back".
  *
  * Layout numbers are the mockup's 1920x1080 pixels halved into dp (a TV is 960x540 dp).
@@ -60,10 +64,15 @@ class MainActivity : Activity() {
     private lateinit var appsPanel: LinearLayout
     private lateinit var appsScroll: HorizontalScrollView
     private lateinit var appsGrid: LinearLayout
-    private lateinit var gifView: ImageView
+    private lateinit var loopSlot: FrameLayout
 
     private val handler = Handler(Looper.getMainLooper())
     private var gif: AnimatedImageDrawable? = null
+    private var player: MediaPlayer? = null
+    private var playerSurface: Surface? = null
+    private var playerReady = false
+    private var videoPosition = 0
+    private var resumed = false
     private var gifPaused = false
     private var showingApps = false
     private var lastWeather = 0L
@@ -83,7 +92,7 @@ class MainActivity : Activity() {
         font = resources.getFont(R.font.commit_mono)
         gifPaused = prefs.getBoolean(KEY_PAUSED, false)
         buildLayout()
-        loadGif()
+        loadLoop()
         tempView.text = prefs.getString(KEY_TEMP, "")
         condView.text = prefs.getString(KEY_COND, "")
     }
@@ -98,13 +107,15 @@ class MainActivity : Activity() {
         }
         handler.removeCallbacks(tick)
         tick.run()
-        if (!gifPaused) gif?.start()
+        resumed = true
+        if (!gifPaused) playLoop()
     }
 
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(tick)
-        gif?.stop()
+        resumed = false
+        holdLoop()
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -161,9 +172,8 @@ class MainActivity : Activity() {
         appsPanel.addView(item("back", TAG_BACK) { showHome() }, backParams)
         root.addView(appsPanel, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.START))
 
-        gifView = ImageView(this)
-        gifView.scaleType = ImageView.ScaleType.FIT_CENTER
-        root.addView(gifView, FrameLayout.LayoutParams(dp(GIF_SIZE), dp(GIF_SIZE), Gravity.BOTTOM or Gravity.END))
+        loopSlot = FrameLayout(this)
+        root.addView(loopSlot, FrameLayout.LayoutParams(dp(LOOP_SIZE), dp(LOOP_SIZE), Gravity.BOTTOM or Gravity.END))
 
         setContentView(root)
     }
@@ -340,27 +350,126 @@ class MainActivity : Activity() {
         }
     }
 
-    // ------------------------------------------------------------------- gif
+    // ------------------------------------------------------------------ loop
 
-    /** Shows app/src/main/assets/home.gif (or home.webp). Replace that file to change it. */
-    private fun loadGif() {
+    /**
+     * Shows the animation from app/src/main/assets: home.mp4 if there is one, otherwise
+     * home.gif or home.webp. Replace that file to change it.
+     */
+    private fun loadLoop() {
+        val names = try {
+            assets.list("")?.toList() ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        if (LOOP_VIDEO in names) {
+            val texture = TextureView(this)
+            texture.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+                    openVideo(Surface(surface))
+                }
+
+                override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
+
+                override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                    closeVideo()
+                    return true
+                }
+
+                override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
+            }
+            loopSlot.addView(texture, FrameLayout.LayoutParams(MATCH, MATCH))
+            return
+        }
+
+        val name = names.firstOrNull { it.startsWith("home.") } ?: return
         try {
-            val name = assets.list("")?.firstOrNull { it.startsWith("home.") } ?: return
             val drawable = ImageDecoder.decodeDrawable(ImageDecoder.createSource(assets, name))
-            gifView.setImageDrawable(drawable)
+            val image = ImageView(this)
+            image.scaleType = ImageView.ScaleType.FIT_CENTER
+            image.setImageDrawable(drawable)
+            loopSlot.addView(image, FrameLayout.LayoutParams(MATCH, MATCH))
             if (drawable is AnimatedImageDrawable) {
                 drawable.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
                 gif = drawable
             }
         } catch (e: Exception) {
-            // No GIF, or one that will not decode: leave the corner empty.
+            // A file that will not decode: leave the corner empty.
         }
     }
 
+    /** The system hands over a drawing surface whenever the launcher is on screen. */
+    private fun openVideo(surface: Surface) {
+        closeVideo()
+        playerSurface = surface
+        try {
+            val mp = MediaPlayer()
+            assets.openFd(LOOP_VIDEO).use { fd ->
+                mp.setDataSource(fd.fileDescriptor, fd.startOffset, fd.length)
+            }
+            mp.setSurface(surface)
+            mp.isLooping = true
+            mp.setVolume(0f, 0f)
+            mp.setOnPreparedListener { ready ->
+                playerReady = true
+                ready.seekTo(videoPosition)
+                if (resumed && !gifPaused) ready.start()
+            }
+            mp.setOnErrorListener { _, _, _ ->
+                closeVideo()
+                true
+            }
+            player = mp
+            mp.prepareAsync()
+        } catch (e: Exception) {
+            closeVideo()
+        }
+    }
+
+    private fun closeVideo() {
+        val mp = player
+        player = null
+        if (mp != null) {
+            try {
+                if (playerReady) videoPosition = mp.currentPosition
+            } catch (e: Exception) {
+                // Keep the last known position.
+            }
+            try {
+                mp.release()
+            } catch (e: Exception) {
+                // Already gone.
+            }
+        }
+        playerReady = false
+        playerSurface?.release()
+        playerSurface = null
+    }
+
+    private fun playLoop() {
+        gif?.start()
+        try {
+            if (playerReady) player?.start()
+        } catch (e: Exception) {
+            // The player is between surfaces; it starts itself once it is ready.
+        }
+    }
+
+    private fun holdLoop() {
+        gif?.stop()
+        try {
+            if (playerReady) player?.pause()
+        } catch (e: Exception) {
+            // Nothing playing.
+        }
+    }
+
+    /** The "x" on the home row. */
     private fun toggleGif() {
         gifPaused = !gifPaused
         prefs.edit().putBoolean(KEY_PAUSED, gifPaused).apply()
-        if (gifPaused) gif?.stop() else gif?.start()
+        if (gifPaused) holdLoop() else playLoop()
     }
 
     // ------------------------------------------------------- clock + weather
@@ -420,10 +529,12 @@ class MainActivity : Activity() {
 
     private companion object {
         const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+        const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         const val GREY = 0xFF7A7A7A.toInt()
         const val TEXT_SIZE = 16f
         const val ITEM_GAP = 28
-        const val GIF_SIZE = 160
+        const val LOOP_SIZE = 160
+        const val LOOP_VIDEO = "home.mp4"
         const val ROWS = 7
         const val COL_WIDTH = 180
         const val COL_GAP = 28
