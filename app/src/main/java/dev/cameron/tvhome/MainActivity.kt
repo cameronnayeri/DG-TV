@@ -533,7 +533,7 @@ class MainActivity : Activity() {
         const val GREY = 0xFF7A7A7A.toInt()
         const val TEXT_SIZE = 16f
         const val ITEM_GAP = 28
-        const val LOOP_SIZE = 160
+        const val LOOP_SIZE = 222
         const val LOOP_VIDEO = "home.mp4"
         const val ROWS = 7
         const val COL_WIDTH = 180
