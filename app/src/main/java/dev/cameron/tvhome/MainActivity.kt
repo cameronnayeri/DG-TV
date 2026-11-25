@@ -1,7 +1,10 @@
 package dev.cameron.tvhome
 
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.res.ColorStateList
 import android.graphics.Canvas
@@ -15,6 +18,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.drawable.Drawable
 import android.media.MediaPlayer
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -70,8 +74,10 @@ class MainActivity : Activity() {
     private var gif: AnimatedImageDrawable? = null
     private var player: MediaPlayer? = null
     private var playerSurface: Surface? = null
+    private var loopTexture: TextureView? = null
     private var playerReady = false
     private var videoPosition = 0
+    private var videoRetries = 0
     private var resumed = false
     private var gifPaused = false
     private var showingApps = false
@@ -86,15 +92,52 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * Sleep and wake. A pause lasts only until the Shield sleeps, and the video player
+     * is rebuilt on waking because the system can take its decoder away during sleep.
+     */
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    gifPaused = false
+                    closeVideo()
+                }
+                Intent.ACTION_SCREEN_ON -> {
+                    closeVideo()
+                    openVideoIfReady()
+                    if (resumed) gif?.start()
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("home", MODE_PRIVATE)
         font = resources.getFont(R.font.commit_mono)
-        gifPaused = prefs.getBoolean(KEY_PAUSED, false)
         buildLayout()
         loadLoop()
         tempView.text = prefs.getString(KEY_TEMP, "")
         condView.text = prefs.getString(KEY_COND, "")
+
+        val screenEvents = IntentFilter(Intent.ACTION_SCREEN_OFF)
+        screenEvents.addAction(Intent.ACTION_SCREEN_ON)
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(screenReceiver, screenEvents, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(screenReceiver, screenEvents)
+        }
+    }
+
+    override fun onDestroy() {
+        try {
+            unregisterReceiver(screenReceiver)
+        } catch (e: Exception) {
+            // Was never registered.
+        }
+        closeVideo()
+        super.onDestroy()
     }
 
     override fun onResume() {
@@ -108,14 +151,17 @@ class MainActivity : Activity() {
         handler.removeCallbacks(tick)
         tick.run()
         resumed = true
-        if (!gifPaused) playLoop()
+        openVideoIfReady()
+        if (!gifPaused) gif?.start()
     }
 
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(tick)
         resumed = false
-        holdLoop()
+        gif?.stop()
+        // Hand the video decoder back while another app is in front.
+        closeVideo()
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -367,7 +413,7 @@ class MainActivity : Activity() {
             val texture = TextureView(this)
             texture.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                 override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
-                    openVideo(Surface(surface))
+                    openVideoIfReady()
                 }
 
                 override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
@@ -379,6 +425,7 @@ class MainActivity : Activity() {
 
                 override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
             }
+            loopTexture = texture
             loopSlot.addView(texture, FrameLayout.LayoutParams(MATCH, MATCH))
             return
         }
@@ -399,7 +446,14 @@ class MainActivity : Activity() {
         }
     }
 
-    /** The system hands over a drawing surface whenever the launcher is on screen. */
+    /** Starts a player if the launcher is in front, has somewhere to draw and has none yet. */
+    private fun openVideoIfReady() {
+        val texture = loopTexture ?: return
+        if (!resumed || player != null) return
+        val surfaceTexture = texture.surfaceTexture ?: return
+        openVideo(Surface(surfaceTexture))
+    }
+
     private fun openVideo(surface: Surface) {
         closeVideo()
         playerSurface = surface
@@ -412,12 +466,19 @@ class MainActivity : Activity() {
             mp.isLooping = true
             mp.setVolume(0f, 0f)
             mp.setOnPreparedListener { ready ->
-                playerReady = true
-                ready.seekTo(videoPosition)
-                if (resumed && !gifPaused) ready.start()
+                if (player === ready) {
+                    playerReady = true
+                    videoRetries = 0
+                    ready.seekTo(videoPosition)
+                    if (resumed && !gifPaused) ready.start()
+                }
             }
             mp.setOnErrorListener { _, _, _ ->
                 closeVideo()
+                if (videoRetries < MAX_VIDEO_RETRIES) {
+                    videoRetries++
+                    handler.postDelayed({ openVideoIfReady() }, 1_000L)
+                }
                 true
             }
             player = mp
@@ -447,29 +508,28 @@ class MainActivity : Activity() {
         playerSurface = null
     }
 
-    private fun playLoop() {
-        gif?.start()
-        try {
-            if (playerReady) player?.start()
-        } catch (e: Exception) {
-            // The player is between surfaces; it starts itself once it is ready.
-        }
-    }
-
-    private fun holdLoop() {
-        gif?.stop()
-        try {
-            if (playerReady) player?.pause()
-        } catch (e: Exception) {
-            // Nothing playing.
-        }
-    }
-
-    /** The "x" on the home row. */
+    /** The "x" on the home row. A pause lasts until the Shield next sleeps. */
     private fun toggleGif() {
         gifPaused = !gifPaused
-        prefs.edit().putBoolean(KEY_PAUSED, gifPaused).apply()
-        if (gifPaused) holdLoop() else playLoop()
+        if (gifPaused) {
+            gif?.stop()
+            try {
+                if (playerReady) player?.pause()
+            } catch (e: Exception) {
+                // Nothing playing.
+            }
+        } else {
+            gif?.start()
+            if (player == null) {
+                openVideoIfReady()
+            } else {
+                try {
+                    if (playerReady) player?.start()
+                } catch (e: Exception) {
+                    // Still preparing: it starts itself once it is ready.
+                }
+            }
+        }
     }
 
     // ------------------------------------------------------- clock + weather
@@ -535,13 +595,13 @@ class MainActivity : Activity() {
         const val ITEM_GAP = 28
         const val LOOP_SIZE = 222
         const val LOOP_VIDEO = "home.mp4"
+        const val MAX_VIDEO_RETRIES = 3
         const val ROWS = 7
         const val COL_WIDTH = 180
         const val COL_GAP = 28
         const val VISIBLE_COLS = 3
 
         const val KEY_PINNED = "pinned"
-        const val KEY_PAUSED = "gif_paused"
         const val KEY_TEMP = "weather_temp"
         const val KEY_COND = "weather_cond"
         const val TAG_APPS = "#apps"

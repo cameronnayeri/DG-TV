@@ -8,7 +8,7 @@ a looping animation in the bottom right.
 
 - **Left / right** moves along the bottom row. **OK** opens the app.
 - **apps** opens the list of everything installed. **Back** returns home.
-- **x** pauses or resumes the animation. The choice is remembered.
+- **x** pauses or resumes the animation. It always plays again after the Shield wakes.
 - In the all apps list, **hold OK** on an app to pin it to the home row or unpin it.
   Pinned apps are marked with `*`.
 
