@@ -36,7 +36,8 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:screenOrientation="landscape"
-            android:stateNotNeeded="true">
+            android:stateNotNeeded="true"
+            android:windowSoftInputMode="adjustPan">
 
             <!-- Makes this app a home screen the system can send the home button to. -->
             <intent-filter>

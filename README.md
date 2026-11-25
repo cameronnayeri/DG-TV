@@ -1,16 +1,27 @@
 # DG TV
 
 A minimal Android TV launcher for the Nvidia Shield. Black screen, white Commit Mono
-text, one text size. Time, date and weather along the top, apps along the bottom left,
+text, one text size. "DG-TV", time, date and weather along the top, apps along the bottom left,
 a looping animation in the bottom right.
 
 ## Using it
 
 - **Left / right** moves along the bottom row. **OK** opens the app.
 - **apps** opens the list of everything installed. **Back** returns home.
-- **x** pauses or resumes the animation. It always plays again after the Shield wakes.
-- In the all apps list, **hold OK** on an app to pin it to the home row or unpin it.
-  Pinned apps are marked with `*`.
+- **x** pauses or resumes the animation until you next leave the home screen.
+- **DG-TV** in the top left opens the launcher's own settings (press up to reach it).
+- In the all apps list, **hold OK** on an app for its options: pin (or unpin) and rename.
+  Pinned apps are marked with `*`. A rename only changes what this launcher shows, and
+  clearing the name puts the original back.
+
+## Settings
+
+Opened from **DG-TV** in the top left.
+
+- **start paused**: when on, the animation rests on a still frame every time the home
+  screen appears, until you press **x**.
+- **pause at**: the frame it rests on. With this row focused, left and right move it in
+  tenths of a second (hold to go faster) and the pendant shows the frame as you go.
 
 ## Making it the home screen
 
