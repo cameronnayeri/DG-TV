@@ -27,18 +27,18 @@ jobs:
         run: gradle --no-daemon assembleRelease
 
       - name: Name the APK
-        run: cp app/build/outputs/apk/release/app-release.apk tv-home.apk
+        run: cp app/build/outputs/apk/release/app-release.apk dg-tv.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: tv-home-apk
-          path: tv-home.apk
+          name: dg-tv-apk
+          path: dg-tv.apk
 
       - name: Publish as a release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
-          gh release create "build-${{ github.run_number }}" tv-home.apk
+          gh release create "build-${{ github.run_number }}" dg-tv.apk
           --title "Build ${{ github.run_number }}"
           --notes "Automatic build of ${{ github.sha }}"
           --latest

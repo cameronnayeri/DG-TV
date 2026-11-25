@@ -1,4 +1,4 @@
-# tv home
+# DG TV
 
 A minimal Android TV launcher for the Nvidia Shield. Black screen, white Commit Mono
 text, one text size. Time, date and weather along the top, apps along the bottom left,
@@ -15,7 +15,7 @@ a looping animation in the bottom right.
 ## Getting a build
 
 Every push to `main` builds the app with GitHub Actions. The newest APK is on the
-repo's Releases page as `tv-home.apk`. Each build installs over the previous one.
+repo's Releases page as `dg-tv.apk`. Each build installs over the previous one.
 
 ## Changing things
 

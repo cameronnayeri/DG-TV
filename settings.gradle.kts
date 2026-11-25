@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "tv-home"
+rootProject.name = "dg-tv"
 include(":app")
