@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DG TV</string>
+    <string name="home_service_label">DG TV home button</string>
+    <string name="home_service_description">Sends the Home button to DG TV instead of the stock home screen. Double press Home for recent apps. Switch this off to go back to the stock home screen.</string>
 </resources>

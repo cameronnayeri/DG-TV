@@ -12,6 +12,15 @@ a looping animation in the bottom right.
 - In the all apps list, **hold OK** on an app to pin it to the home row or unpin it.
   Pinned apps are marked with `*`.
 
+## Making it the home screen
+
+1. In Projectivy's settings, turn off "Override current launcher".
+2. On the Shield, open Settings > Device Preferences > Accessibility, choose
+   "DG TV home button" and switch it on.
+
+Home now opens DG TV. A quick double press of Home opens recent apps. Switch the
+service off in the same place to go back to the stock home screen.
+
 ## Getting a build
 
 Every push to `main` builds the app with GitHub Actions. The newest APK is on the
